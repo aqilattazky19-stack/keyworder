@@ -31,7 +31,7 @@ if uploaded_file is not None:
                 # Konfigurasi AI
                 genai.configure(api_key=api_key)
                 # Menggunakan model flash yang cepat dan mendukung gambar
-                model = genai.GenerativeModel('gemini-1.5-flash')
+                model = genai.GenerativeModel('gemini-3.5-flash')
 
                 # Instruksi khusus untuk format Adobe Stock
                 prompt = """
