@@ -1,75 +1,94 @@
 import streamlit as st
 import google.generativeai as genai
 from PIL import Image
+import time
 
 # Konfigurasi Halaman UI
-st.set_page_config(page_title="Stock Keyworder AI", layout="centered")
+st.set_page_config(page_title="Multi-Stock Keyworder AI", layout="wide")
 
-st.title("📸 AI Keyworder untuk Adobe Stock")
-st.write("Aplikasi ini secara otomatis menghasilkan Judul, Kategori, dan Keyword (dipisahkan koma) untuk foto microstock Anda.")
+st.title("📸 AI Multi-Keyworder Adobe Stock")
+st.write("Unggah banyak gambar sekaligus dan dapatkan metadata khusus untuk masing-masing foto.")
 
-# Input API Key
+# Sidebar untuk Konfigurasi
 with st.sidebar:
     st.header("Konfigurasi")
     api_key = st.text_input("Masukkan Google Gemini API Key Anda:", type="password")
-    st.markdown("[Dapatkan API Key gratis di sini](https://aistudio.google.com/app/apikey)")
-    st.info("Kunci API tidak disimpan dan hanya digunakan selama sesi aplikasi ini berjalan.")
+    st.markdown("[Dapatkan API Key baru di sini](https://aistudio.google.com/app/apikey)")
+    
+    # Pilihan Model (Gunakan 1.5 Flash karena paling cepat untuk gambar)
+    model_name = 'gemini-3.5-flash' 
+    
+    st.info("Saran: Gunakan API Key yang baru saja Anda buat ulang.")
 
-# Area Upload Gambar
-uploaded_file = st.file_uploader("Pilih gambar atau ilustrasi Anda...", type=["jpg", "jpeg", "png"])
+# Area Upload Multi-Gambar
+uploaded_files = st.file_uploader(
+    "Pilih satu atau beberapa gambar...", 
+    type=["jpg", "jpeg", "png"], 
+    accept_multiple_files=True
+)
 
-if uploaded_file is not None:
-    # Menampilkan gambar
-    image = Image.open(uploaded_file)
-    st.image(image, caption="Preview Gambar", use_column_width=True)
+if uploaded_files:
+    st.info(f"Total gambar diunggah: {len(uploaded_files)}")
+    
+    # Tombol untuk memproses semua gambar sekaligus
+    start_all = st.button("Generate Metadata untuk Semua Gambar", type="primary")
 
-    if st.button("Generate Metadata", type="primary"):
+    if start_all:
         if not api_key:
-            st.error("⚠️ Silakan masukkan API Key di menu samping (sidebar) terlebih dahulu.")
+            st.error("⚠️ Silakan masukkan API Key di sidebar!")
         else:
             try:
-                # Konfigurasi AI
+                # Inisialisasi AI
                 genai.configure(api_key=api_key)
-                # Menggunakan model flash yang cepat dan mendukung gambar
-                model = genai.GenerativeModel('gemini-3.5-flash')
+                model = genai.GenerativeModel(model_name)
 
-                # Instruksi khusus untuk format Adobe Stock
-                prompt = """
-                Act as an expert microstock photography contributor for Adobe Stock.
-                Analyze this image and provide the following metadata in English (since English is the global standard for stock search):
+                # Loop melalui setiap file yang diunggah
+                for index, uploaded_file in enumerate(uploaded_files):
+                    # Membuat baris baru untuk setiap gambar
+                    with st.container():
+                        st.markdown(f"### Gambar {index + 1}: {uploaded_file.name}")
+                        
+                        # Membagi layar menjadi 2 kolom (Kiri: Gambar, Kanan: Metadata)
+                        col1, col2 = st.columns([1, 2])
+                        
+                        img = Image.open(uploaded_file)
+                        with col1:
+                            st.image(img, use_column_width=True)
+                        
+                        with col2:
+                            with st.spinner(f"Menganalisis gambar {index + 1}..."):
+                                # Prompt khusus Adobe Stock
+                                prompt = """
+                                Act as an expert microstock photography curator. Provide metadata in English:
+                                1. Title: Descriptive title (max 200 chars).
+                                2. Category: Select one (Animals, Buildings, Business, Drinks, Environment, Food, Graphic Resources, Hobbies, Industry, Landscapes, Lifestyle, People, Plants, Culture, Science, Social Issues, Sports, Technology, Transport, Travel).
+                                3. Keywords: 30-50 relevant keywords, comma-separated.
+                                
+                                Format:
+                                **Title:** [title]
+                                **Category:** [category]
+                                **Keywords:** [k1, k2, k3...]
+                                """
+                                
+                                response = model.generate_content([prompt, img])
+                                result_text = response.text
+                                
+                                # Menampilkan Hasil
+                                st.markdown(result_text)
+                                
+                                # Tombol copy khusus keyword untuk gambar ini
+                                if "**Keywords:**" in result_text:
+                                    kw_only = result_text.split("**Keywords:**")[-1].strip()
+                                    st.code(kw_only, language="text")
+                        
+                        st.markdown("---") # Garis pembatas antar gambar
+                        
+                        # Beri jeda sedikit agar tidak terkena limit API (Rate Limit)
+                        time.sleep(1)
 
-                1. Title: A highly accurate and descriptive title for the image (maximum 200 characters).
-                2. Category: Select exactly ONE of the most relevant Adobe Stock categories from this list: Animals, Buildings and Architecture, Business, Drinks, Environment, Food, Graphic Resources, Hobbies and Leisure, Industry, Landscapes, Lifestyle, People, Plants and Flowers, Culture and Religion, Science, Social Issues, Sports, Technology, Transport, Travel.
-                3. Keywords: Provide between 30 to 50 highly relevant keywords. Order them from most important to least important. Separate them strictly with commas. Do NOT use hashtags (#). Do not use bullet points.
-
-                Format the exact output like this:
-                **Title:** [Your Title]
-                
-                **Category:** [Your Category]
-                
-                **Keywords:** [keyword1, keyword2, keyword3, ...]
-                """
-
-                with st.spinner("AI sedang menganalisis gambar Anda..."):
-                    response = model.generate_content([prompt, image])
-
-                st.success("Metadata berhasil dibuat!")
-                
-                # Menampilkan Hasil Utama
-                st.markdown("### Hasil Analisis")
-                st.markdown(response.text)
-
-                # Ekstraksi khusus untuk Keyword agar mudah di-copy
-                st.markdown("---")
-                st.markdown("### 📋 Copy Keywords")
-                st.write("Gunakan kotak di bawah ini untuk menyalin (*copy*) langsung ke kolom keyword Adobe Stock (klik ikon copy di sudut kanan atas kotak).")
-                
-                # Memisahkan bagian teks untuk mendapatkan hanya keyword
-                if "**Keywords:**" in response.text:
-                    keywords_only = response.text.split("**Keywords:**")[-1].strip()
-                    st.code(keywords_only, language="text")
-                else:
-                    st.warning("Gagal mengekstrak blok keywords secara spesifik. Silakan copy dari teks di atas.")
+                st.success("✅ Semua gambar selesai diproses!")
 
             except Exception as e:
-                st.error(f"Terjadi kesalahan saat menghubungi server: {e}")
+                st.error(f"Terjadi kesalahan: {e}")
+else:
+    st.write("Silakan pilih gambar untuk memulai.")
